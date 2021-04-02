@@ -1,4 +1,3 @@
-%matplotlib inline
 import math
 import random
 import numpy as np
@@ -52,7 +51,6 @@ class DQN(nn.Module):
 Experience = namedtuple(
     'Experience',
     ('state', 'action', 'next_state', 'reward')
-
 )
 
 class ReplayMemory():
@@ -82,7 +80,7 @@ class EpsilonGreedyStrategy():
         self.decay = decay
 
     def get_exploration_rate(self, current_step):
-    return self.end + (self.start - self.end) * math.exp(-1. * current_step * self.decay)
+        return self.end + (self.start - self.end) * math.exp(-1. * current_step * self.decay)
  
 
 class Agent():
