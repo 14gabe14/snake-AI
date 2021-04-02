@@ -2,6 +2,9 @@ import pygame
 import random
 from enum import Enum
 from collections import namedtuple
+from .DQN import DQN, ReplayMemory, EpsilonGreedyStrategy
+
+DEVICE = 'cpu'
 
 pygame.init()
 
@@ -55,9 +58,9 @@ class SnakeGame:
             self.place_food()
 
 
-    def play_step(self):
+    def play_step(self, action):
         #MOVEMENT FROM AI-------------
-
+        #update snake according to action
 
         #Check if game over
         game_over = False
@@ -67,16 +70,17 @@ class SnakeGame:
             
         #Place new food
         if self.head == self.food:
-            self.score += 1
+            self.score += 100
             self.place_food()
 
         
         #Update ui and clock
         self.update_ui()
+        #SPEED = 20
         self.clock.tick(SPEED)
 
         # 6. return game over and score
-        return game_over, self.score
+        return torch.tensor(game_over, self.score)
 
     #Collision Detection
     def is_collision(self, pt=None):
