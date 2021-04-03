@@ -2,6 +2,7 @@ import pygame
 import random
 from enum import Enum
 from collections import namedtuple
+import numpy as np
 
 #from DQN import DQN, ReplayMemory, EpsilonGreedyStrategy
 
@@ -9,7 +10,11 @@ DEVICE = 'cpu'
 
 pygame.init()
 
-direction = {"left": 1, "right":2, "up":3, "down":4}
+class Direction(Enum):
+    RIGHT = 1
+    LEFT = 2
+    UP = 3
+    DOWN = 4
 
 
 Point = namedtuple('Point', 'x, y')
@@ -31,23 +36,24 @@ class SnakeGame:
 
         # init display
         self.display = pygame.display.set_mode((self.w, self.h))
-        pygame.display.set_caption ('Snake Game')
+        pygame.display.set_caption('Snake Game')
 
         self.reset()
 
     def reset(self):
         #game state
-        self.direction = direction["right"]
+        self.direction = Direction.RIGHT
         
+        self.head = Point(self.w/2, self.h/2)
         
-        self.snake = [Point(self.w/2-(2*BLOCKSIZE), self.h/2), 
-                      Point(self.w/2-BLOCKSIZE, self.h/2), 
-                      Point(self.w/2, self.h/2)] #HEAD
-        
-        self.snakeLength = len(self.snake)
+        self.snake = [self.head,
+                      Point(self.head.x-BLOCKSIZE, self.head.y),
+                      Point(self.head.x-(2*BLOCKSIZE), self.head.y)]
+
         self.score = 0
         self.food = None
         self.place_food()
+        self.frame_iteration = 0
         
 
     def place_food(self):
@@ -59,59 +65,32 @@ class SnakeGame:
             self.place_food()
 
 
-    def play_step(self, action):
+    def play_step(self, action: list):
+        self.frame_iteration += 1
+
         #MOVEMENT FROM AI-------------
         #update snake's position according to action
-        for point in self.snake:
-            print(point.x, point.y)
-            
-        print(action)
+
+        self._move(action)
+        self.snake.insert(0, self.head)
         
-        x1 = self.snake[-1].x
-        y1 = self.snake[-1].y
-        
-        x1_change = 0       
-        y1_change = 0
-        
-        #OPTIONAL IMPLEMENT NO BACKWARDS MOVEMENT
-        if action == 1: #LEFT
-            x1_change = -BLOCKSIZE
-            y1_change = 0
-            print("LEFT")
-        elif action == 2: #RIGHT
-            x1_change = BLOCKSIZE
-            y1_change = 0
-            print("RIGHT")
-        elif action == 3: #UP
-            y1_change = -BLOCKSIZE
-            x1_change = 0
-            print("UP")
-        elif action == 4: #DOWN
-            y1_change = BLOCKSIZE
-            x1_change = 0
-            print("DOWN")
-            
-        x1 += x1_change
-        y1 += y1_change
-        
-        self.snake.append(Point(x1, y1))
-        #delete tail
-        if len(self.snake) > self.snakeLength:
-            del self.snake[0]
-        
+
         #Check if game over
+        reward = 0
         game_over = False
-        if self.is_collision():
-            print("collision")
+        if self.is_collision() or self.frame_iteration > 100*len(self.snake):
             game_over = True
-            #return torch.tensor([game_over, self.score], device = DEVICE)
-            return game_over, self.score
+            reward = -10
+            return reward, game_over, self.score
             
+
         #Place new food
-        if self.snake[-1] == self.food:
-            self.score += 100
+        if self.head == self.food:
+            self.score += 1
+            reward = 10
             self.place_food()
-            self.snakeLenght += 1
+        else:
+            self.snake.pop()
 
         
         #Update ui and clock
@@ -119,28 +98,21 @@ class SnakeGame:
 
         # 6. return game over and score
         #return torch.tensor([game_over, self.score], device = DEVICE)
-        return game_over, self.score
+        return reward, game_over, self.score
 
     #Collision Detection
     def is_collision(self, pt=None):
         if pt is None:
-            pt = self.snake[-1]
-
-        #if snake hits a boundary
+            pt = self.head
+        # hits boundary
         if pt.x > self.w - BLOCKSIZE or pt.x < 0 or pt.y > self.h - BLOCKSIZE or pt.y < 0:
-            print("boundary hit")
             return True
-        
-        for point in self.snake:
-            print(point.x, point.y)
-            
-        #if snake hits itself
-        if pt in self.snake[:-1]:
-            
-            print("hits itself")
+        # hits itself
+        if pt in self.snake[1:]:
             return True
-        
+
         return False
+
 
     #Interface
     def update_ui(self):
@@ -158,20 +130,53 @@ class SnakeGame:
         pygame.display.flip()
 
 
+    def _move(self, action):
+
+        # [straight, right, left]
+
+        clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
+        idx = clock_wise.index(self.direction)
+        print(3)
+        if np.array_equal(action, [1, 0, 0]):
+            new_dir = clock_wise[idx] # no change
+        elif np.array_equal(action, [0, 1, 0]):
+            next_idx = (idx + 1) % 4
+            new_dir = clock_wise[next_idx] # right turn r -> d -> l -> u
+        else: # [0, 0, 1]
+            next_idx = (idx - 1) % 4
+            new_dir = clock_wise[next_idx] # left turn r -> u -> l -> d
+
+        self.direction = new_dir
+
+        x = self.head.x
+        y = self.head.y
+        if self.direction == Direction.RIGHT:
+            x += BLOCKSIZE
+        elif self.direction == Direction.LEFT:
+            x -= BLOCKSIZE
+        elif self.direction == Direction.DOWN:
+            y += BLOCKSIZE
+        elif self.direction == Direction.UP:
+            y -= BLOCKSIZE
+        
+        self.head = Point(x, y)
+
+
+
 if __name__ == '__main__':
     game = SnakeGame()
     clock = pygame.time.Clock()
 
     while True:
-        game_over, score = game.play_step(random.randint(1,4))
+        reward, game_over, score = game.play_step([1, 0, 0])
+        reward, game_over, score = game.play_step([0, 1, 0])
 
         clock.tick(SPEED)
-        print("TICK")
 
         if game_over == True:
             break
 
+
     print('Final Score', score)
 
     pygame.quit()
-
