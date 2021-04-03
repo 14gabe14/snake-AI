@@ -73,7 +73,7 @@ class SnakeGame:
         x1_change = 0       
         y1_change = 0
         
-
+        #OPTIONAL IMPLEMENT NO BACKWARDS MOVEMENT
         if action == 1: #LEFT
             x1_change = -BLOCKSIZE
             y1_change = 0
