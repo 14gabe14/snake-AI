@@ -3,6 +3,7 @@ import random
 from enum import Enum
 from collections import namedtuple
 import numpy as np
+from PIL import Image
 
 #from DQN import DQN, ReplayMemory, EpsilonGreedyStrategy
 
@@ -22,21 +23,23 @@ Point = namedtuple('Point', 'x, y')
 #Colours 
 RED = (200, 0, 0)
 BLUE = (0, 0, 255)
+LIGHT_BLUE = (0, 255, 255)
 BLACK = (0, 0, 0)
 
 BLOCKSIZE = 20
-SPEED = 20
+SPEED = 100
 
 
 class SnakeGame:
 
-    def __init__(self, w=640, h=480): #32 by 24 blocks
+    def __init__(self, w=480, h=480): #24 by 24 blocks
         self.w = w
         self.h = h
 
         # init display
         self.display = pygame.display.set_mode((self.w, self.h))
         pygame.display.set_caption('Snake Game')
+        self.clock = pygame.time.Clock()
 
         self.reset()
 
@@ -54,7 +57,16 @@ class SnakeGame:
         self.food = None
         self.place_food()
         self.frame_iteration = 0
+        self.over = False
+        self.flag = 0
+        self.dif = self.difference()
         
+
+    def difference(self):
+        dx = abs(self.head.x - self.food.x)/BLOCKSIZE/24
+        dy = abs(self.head.y - self.food.y)/BLOCKSIZE/24
+
+        return (dx+dy)/2
 
     def place_food(self):
         x = random.randint(0, (self.w-BLOCKSIZE)//BLOCKSIZE)*BLOCKSIZE
@@ -68,6 +80,10 @@ class SnakeGame:
     def play_step(self, action: list):
         self.frame_iteration += 1
 
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
         #MOVEMENT FROM AI-------------
         #update snake's position according to action
 
@@ -77,11 +93,11 @@ class SnakeGame:
 
         #Check if game over
         reward = 0
-        game_over = False
+        
         if self.is_collision() or self.frame_iteration > 100*len(self.snake):
-            game_over = True
+            self.over = True
             reward = -10
-            return reward, game_over, self.score
+            return reward, self.over, self.score
             
 
         #Place new food
@@ -91,14 +107,18 @@ class SnakeGame:
             self.place_food()
         else:
             self.snake.pop()
-
-        
+            #reward = self.dif - self.difference()
+            #self.dif = self.difference()
+            if self.frame_iteration > 50*len(self.snake):
+                reward -= 1
+            
         #Update ui and clock
         self.update_ui()
-
+        self.clock.tick(SPEED)
+        
         # 6. return game over and score
         #return torch.tensor([game_over, self.score], device = DEVICE)
-        return reward, game_over, self.score
+        return reward, self.over, self.score
 
     #Collision Detection
     def is_collision(self, pt=None):
@@ -136,7 +156,7 @@ class SnakeGame:
 
         clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
         idx = clock_wise.index(self.direction)
-        print(3)
+
         if np.array_equal(action, [1, 0, 0]):
             new_dir = clock_wise[idx] # no change
         elif np.array_equal(action, [0, 1, 0]):
@@ -161,22 +181,44 @@ class SnakeGame:
         
         self.head = Point(x, y)
 
+    def toArray(self):
+        if(self.over):
+            print("GAME OVER")
+            return np.zeros(shape=(1, 3, int(self.h/BLOCKSIZE), int(self.w/BLOCKSIZE)), dtype=np.uint8)
+
+        array_image = np.zeros(shape=(int(self.h/BLOCKSIZE), int(self.w/BLOCKSIZE), 3), dtype=np.uint8)
+        
+        for pt in self.snake:
+            array_image[int(pt.y/BLOCKSIZE), int(pt.x/BLOCKSIZE)] = BLUE
+
+        array_image[int(self.head.y/BLOCKSIZE), int(self.head.x/BLOCKSIZE)] = LIGHT_BLUE
+
+        array_image[int(self.food.y/BLOCKSIZE), int(self.food.x/BLOCKSIZE)] = RED
+
+        array_image = np.moveaxis(array_image, 0, 2)
+
+        array_image = np.reshape(array_image, (1, 3, int(self.h/BLOCKSIZE), int(self.h/BLOCKSIZE)))
+        
+        #print(array_image.shape)
+
+        return array_image
 
 
 if __name__ == '__main__':
     game = SnakeGame()
     clock = pygame.time.Clock()
 
+    game.reset()
+
     while True:
         reward, game_over, score = game.play_step([1, 0, 0])
         reward, game_over, score = game.play_step([0, 1, 0])
-
-        clock.tick(SPEED)
 
         if game_over == True:
             break
 
 
     print('Final Score', score)
+    
 
-    pygame.quit()
+
