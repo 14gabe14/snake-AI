@@ -5,7 +5,10 @@ from collections import namedtuple
 import numpy as np
 from PIL import Image
 
-#from DQN import DQN, ReplayMemory, EpsilonGreedyStrategy
+import torch
+from torch import nn
+from torchvision import transforms as T
+
 
 DEVICE = 'cpu'
 
@@ -60,11 +63,14 @@ class SnakeGame:
         self.over = False
         self.flag = 0
         self.dif = self.difference()
-        
+        self.action = [0, 0, 0]
+        self.frameStack = np.zeros(shape = (4, int(self.h/BLOCKSIZE), int(self.w/BLOCKSIZE)), dtype=np.uint8)
+        return self.toTensor(self.frameStack)
+       
 
     def difference(self):
-        dx = abs(self.head.x - self.food.x)/BLOCKSIZE/24
-        dy = abs(self.head.y - self.food.y)/BLOCKSIZE/24
+        dx = abs(self.head.x - self.food.x)/BLOCKSIZE/16
+        dy = abs(self.head.y - self.food.y)/BLOCKSIZE/16
 
         return (dx+dy)/2
 
@@ -77,7 +83,11 @@ class SnakeGame:
             self.place_food()
 
 
-    def play_step(self, action: list):
+    def play_step(self, action_idx):
+
+        action = [0]*3
+        action[action_idx] = 1
+
         self.frame_iteration += 1
 
         for event in pygame.event.get():
@@ -90,35 +100,44 @@ class SnakeGame:
         self._move(action)
         self.snake.insert(0, self.head)
         
-
-        #Check if game over
-        reward = 0
+        self.reward = 0
         
         if self.is_collision() or self.frame_iteration > 100*len(self.snake):
             self.over = True
-            reward = -10
-            return reward, self.over, self.score
-            
+            self.reward = -10
+            return self.toTensor(self.frameStack), self.reward, self.over, self.score
+        
+        #if self.difference() < 2:
+            #self.reward = 1
 
         #Place new food
         if self.head == self.food:
             self.score += 1
-            reward = 10
+            self.reward = 10
             self.place_food()
+            self.frame_iteration = 0
         else:
             self.snake.pop()
             #reward = self.dif - self.difference()
             #self.dif = self.difference()
-            if self.frame_iteration > 50*len(self.snake):
-                reward -= 1
+            #if self.frame_iteration > 50*len(self.snake):
+                #self.reward -= 1
+
+        #if np.array_equal(self.action, action) and not np.array_equal(action, [1, 0, 0]):
+            #self.flag += 1
+
+        #if self.flag > 4:
+            #self.reward -= 5
+
+        self.action = action
             
         #Update ui and clock
         self.update_ui()
         self.clock.tick(SPEED)
-        
+        self.updateStack()
         # 6. return game over and score
         #return torch.tensor([game_over, self.score], device = DEVICE)
-        return reward, self.over, self.score
+        return self.toTensor(self.frameStack), self.reward, self.over, self.score
 
     #Collision Detection
     def is_collision(self, pt=None):
@@ -153,7 +172,7 @@ class SnakeGame:
     def _move(self, action):
 
         # [straight, right, left]
-
+        
         clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
         idx = clock_wise.index(self.direction)
 
@@ -165,6 +184,7 @@ class SnakeGame:
         else: # [0, 0, 1]
             next_idx = (idx - 1) % 4
             new_dir = clock_wise[next_idx] # left turn r -> u -> l -> d
+
 
         self.direction = new_dir
 
@@ -181,27 +201,53 @@ class SnakeGame:
         
         self.head = Point(x, y)
 
-    def toArray(self):
+    def updateStack(self):
+        
+        fy = int(self.food.y/BLOCKSIZE)
+        fx = int(self.food.x/BLOCKSIZE)
+
+        bh = int(self.h/BLOCKSIZE)
+        bw = int(self.w/BLOCKSIZE)
+
         if(self.over):
             print("GAME OVER")
-            return np.zeros(shape=(1, 3, int(self.h/BLOCKSIZE), int(self.w/BLOCKSIZE)), dtype=np.uint8)
+        else:
+            #print("Hello")
+            array_image = np.zeros(shape=(1, bh, bw), dtype=np.uint8)
 
-        array_image = np.zeros(shape=(int(self.h/BLOCKSIZE), int(self.w/BLOCKSIZE), 3), dtype=np.uint8)
+            for pt in self.snake:
+                array_image[0, int(pt.y/BLOCKSIZE), int(pt.x/BLOCKSIZE)] = 128
+
+            #array_image[0, int(self.head.y/BLOCKSIZE), int(self.head.x/BLOCKSIZE)] = 128
+            """
+            for i in range(-1, 2):
+                for j in range(-1, 2):
+                    if fy + i < bh and fy + i > 0 and fx + j < bw and fx + j > 0:
+                        array_image[0, fy+i, fx+j] = 192
+            """
+            
+            array_image[0, int(fy), int(fx)] = 255
+            
+            self.frameStack = np.append(self.frameStack, array_image, axis=0)
+
+            np.set_printoptions(threshold=np.inf)
+            
+            self.frameStack = np.delete(self.frameStack, 0, 0)
+            #print(self.frameStack.shape)
+
+        #
+
+    def toTensor(self, observation):
+
+        observation = torch.tensor(observation.copy(), dtype=torch.float)
+        transforms = T.Normalize(0, 255)
+        observation = transforms(observation).squeeze(0)
         
-        for pt in self.snake:
-            array_image[int(pt.y/BLOCKSIZE), int(pt.x/BLOCKSIZE)] = BLUE
+        return observation
 
-        array_image[int(self.head.y/BLOCKSIZE), int(self.head.x/BLOCKSIZE)] = LIGHT_BLUE
-
-        array_image[int(self.food.y/BLOCKSIZE), int(self.food.x/BLOCKSIZE)] = RED
-
-        array_image = np.moveaxis(array_image, 0, 2)
-
-        array_image = np.reshape(array_image, (1, 3, int(self.h/BLOCKSIZE), int(self.h/BLOCKSIZE)))
-        
-        #print(array_image.shape)
-
-        return array_image
+    
+    def getStack(self):
+        return np.reshape(self.frameStack, (1, 4, 16, 16))
 
 
 if __name__ == '__main__':
@@ -210,15 +256,29 @@ if __name__ == '__main__':
 
     game.reset()
 
-    while True:
-        reward, game_over, score = game.play_step([1, 0, 0])
-        reward, game_over, score = game.play_step([0, 1, 0])
+    
 
-        if game_over == True:
-            break
+    #_, reward, game_over, score = game.play_step(2)
+    _, reward, game_over, score = game.play_step(0)
+    #_, reward, game_over, score = game.play_step(2)
+    _, reward, game_over, score = game.play_step(0)
+    #_, reward, game_over, score = game.play_step(2)
+    _, reward, game_over, score = game.play_step(0)
+    #_, reward, game_over, score = game.play_step(2)
+    #_, reward, game_over, score = game.play_step(0)
+    fs, reward, game_over, score = game.play_step(0)
+    np.set_printoptions(threshold=np.inf)
+    torch.set_printoptions(threshold=10_000)
+    print(fs)
+
+    fs, reward, game_over, score = game.play_step(0)
+    print(fs)
+
+    fs, reward, game_over, score = game.play_step(0)
+    print(fs)
 
 
-    print('Final Score', score)
+    #print('Final Score', score)
     
 
 
