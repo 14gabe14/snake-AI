@@ -35,7 +35,7 @@ SPEED = 100
 
 class SnakeGame:
 
-    def __init__(self, w=480, h=480): #24 by 24 blocks
+    def __init__(self, w=240, h=240): #24 by 24 blocks
         self.w = w
         self.h = h
 
@@ -64,7 +64,7 @@ class SnakeGame:
         self.flag = 0
         self.dif = self.difference()
         self.action = [0, 0, 0]
-        self.frameStack = np.zeros(shape = (4, int(self.h/BLOCKSIZE), int(self.w/BLOCKSIZE)), dtype=np.uint8)
+        self.frameStack = np.zeros(shape = (4, int(self.h/BLOCKSIZE)+2, int(self.w/BLOCKSIZE)+2), dtype=np.uint8)
         return self.toTensor(self.frameStack)
        
 
@@ -83,10 +83,7 @@ class SnakeGame:
             self.place_food()
 
 
-    def play_step(self, action_idx):
-
-        action = [0]*3
-        action[action_idx] = 1
+    def play_step(self, action:list):
 
         self.frame_iteration += 1
 
@@ -105,7 +102,7 @@ class SnakeGame:
         if self.is_collision() or self.frame_iteration > 100*len(self.snake):
             self.over = True
             self.reward = -10
-            return self.toTensor(self.frameStack), self.reward, self.over, self.score
+            return self.reward, self.over, self.score
         
         #if self.difference() < 2:
             #self.reward = 1
@@ -137,7 +134,48 @@ class SnakeGame:
         self.updateStack()
         # 6. return game over and score
         #return torch.tensor([game_over, self.score], device = DEVICE)
+        return self.reward, self.over, self.score
+
+    def play(self, action_idx):
+
+        action = [0]*3
+        action[action_idx] = 1
+
+        self.frame_iteration += 1
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+
+        self._move(action)
+        self.snake.insert(0, self.head)
+        
+        self.reward = 0
+        
+        if self.is_collision() or self.frame_iteration > 100*len(self.snake):
+            self.over = True
+            self.reward = -10
+            return self.toTensor(self.frameStack), self.reward, self.over, self.score
+        
+        #Place new food
+        if self.head == self.food:
+            self.score += 1
+            self.reward = 10
+            self.place_food()
+            self.frame_iteration = 0
+        else:
+            self.snake.pop()
+
+
+        self.action = action
+            
+        self.update_ui()
+        self.clock.tick(SPEED)
+        self.updateStack()
+
         return self.toTensor(self.frameStack), self.reward, self.over, self.score
+
 
     #Collision Detection
     def is_collision(self, pt=None):
@@ -213,29 +251,31 @@ class SnakeGame:
             print("GAME OVER")
         else:
             #print("Hello")
-            array_image = np.zeros(shape=(1, bh, bw), dtype=np.uint8)
+            array_image = self.getFrame()
 
             for pt in self.snake:
-                array_image[0, int(pt.y/BLOCKSIZE), int(pt.x/BLOCKSIZE)] = 128
-
-            #array_image[0, int(self.head.y/BLOCKSIZE), int(self.head.x/BLOCKSIZE)] = 128
-            """
-            for i in range(-1, 2):
-                for j in range(-1, 2):
-                    if fy + i < bh and fy + i > 0 and fx + j < bw and fx + j > 0:
-                        array_image[0, fy+i, fx+j] = 192
-            """
+                array_image[0, int(pt.y/BLOCKSIZE)+1, int(pt.x/BLOCKSIZE)+1] = 128
             
-            array_image[0, int(fy), int(fx)] = 255
+            array_image[0, int(fy)+1, int(fx)+1] = 255
             
             self.frameStack = np.append(self.frameStack, array_image, axis=0)
 
             np.set_printoptions(threshold=np.inf)
             
             self.frameStack = np.delete(self.frameStack, 0, 0)
-            #print(self.frameStack.shape)
 
-        #
+    def getFrame(self):
+        bh = int(self.h/BLOCKSIZE)
+        bw = int(self.w/BLOCKSIZE)
+
+        array_image = np.zeros(shape=(1, bh+2, bw+2), dtype=np.uint8)
+
+        array_image[0, 0, :] = 64
+        array_image[0, -1, :] = 64
+        array_image[0, :, 0] = 64
+        array_image[0, :, -1] = 64
+
+        return array_image
 
     def toTensor(self, observation):
 
@@ -245,9 +285,6 @@ class SnakeGame:
         
         return observation
 
-    
-    def getStack(self):
-        return np.reshape(self.frameStack, (1, 4, 16, 16))
 
 
 if __name__ == '__main__':
@@ -259,19 +296,19 @@ if __name__ == '__main__':
     
 
     #_, reward, game_over, score = game.play_step(2)
-    _, reward, game_over, score = game.play_step(0)
+    _, reward, game_over, score = game.play(0)
     #_, reward, game_over, score = game.play_step(2)
-    _, reward, game_over, score = game.play_step(0)
+    _, reward, game_over, score = game.play(0)
     #_, reward, game_over, score = game.play_step(2)
-    _, reward, game_over, score = game.play_step(0)
+    _, reward, game_over, score = game.play(0)
     #_, reward, game_over, score = game.play_step(2)
     #_, reward, game_over, score = game.play_step(0)
-    fs, reward, game_over, score = game.play_step(0)
+    fs, reward, game_over, score = game.play(0)
     np.set_printoptions(threshold=np.inf)
     torch.set_printoptions(threshold=10_000)
     print(fs)
 
-    fs, reward, game_over, score = game.play_step(0)
+    fs, reward, game_over, score = game.play(0)
     print(fs)
 
     fs, reward, game_over, score = game.play_step(0)

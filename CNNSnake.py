@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 from collections import deque
 import random, datetime, os, copy
+from helper import plot
 
 # Snake environment 
 from snake import SnakeGame
@@ -17,7 +18,7 @@ import matplotlib.pyplot as plt
 
 class CSnake:
     def __init__(self, state_dim, action_dim, save_dir):
-        self.state_dim = state_dim #4, 24, 24
+        self.state_dim = state_dim #4, 14, 14
         self.action_dim = action_dim #3
         self.save_dir = save_dir
         self.device = 'cpu'
@@ -27,13 +28,13 @@ class CSnake:
 
         self.exploration_rate = 1
         self.exploration_rate_decay = 0.999975
-        self.exploration_rate_min = 0.025
+        self.exploration_rate_min = 0.01
         self.curr_step = 0
 
         self.save_every = 5e5  # no. of experiences between saving Snake Net
 
         self.memory = deque(maxlen=100000)
-        self.batch_size = 32
+        self.batch_size = 512
         self.gamma = 0.9
 
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.0005) #0.00025
@@ -178,10 +179,10 @@ class SnakeNet(nn.Module):
         super().__init__()
         c, h, w = input_dim
 
-        if h != 12:
-            raise ValueError(f"Expecting input height: 12, got: {h}")
-        if w != 12:
-            raise ValueError(f"Expecting input width: 12, got: {w}")
+        if h != 14:
+            raise ValueError(f"Expecting input height: 14, got: {h}")
+        if w != 14:
+            raise ValueError(f"Expecting input width: 14, got: {w}")
 
         self.online = nn.Sequential(
             nn.Conv2d(in_channels=c, out_channels=32, kernel_size=4, stride=2),
@@ -191,9 +192,9 @@ class SnakeNet(nn.Module):
             nn.Conv2d(in_channels=64, out_channels=128, kernel_size=2, stride=1),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(512, 32),
+            nn.Linear(1152, 64),
             nn.ReLU(),
-            nn.Linear(32, output_dim),
+            nn.Linear(64, output_dim),
         )
 
         self.target = copy.deepcopy(self.online)
@@ -316,11 +317,18 @@ def play():
     save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     save_dir.mkdir(parents=True)
 
-    snake = CSnake(state_dim=(4, 12, 12), action_dim=3, save_dir=save_dir)
+    snake = CSnake(state_dim=(4, 14, 14), action_dim=3, save_dir=save_dir)
     env = SnakeGame(240, 240)
     logger = MetricLogger(save_dir)
 
     episodes = 10000
+    record = 0
+    total_score = 0
+    plot_scores = []
+    plot_mean_scores = []
+    last_20_mean_scores = []
+    last_20_scores = 0
+
     for e in range(episodes):
 
         state = env.reset()
@@ -331,7 +339,7 @@ def play():
             action = snake.act(state)
 
             # Agent performs action
-            next_state, reward, done, _ = env.play_step(action)
+            next_state, reward, done, score = env.play(action)
 
             # Remember
             snake.cache(state, next_state, action, reward, done)
@@ -346,10 +354,25 @@ def play():
             state = next_state
 
             # Check if end of game
-            if done: # or info["flag_get"]:
+            if done: 
+                
+                if score > record:
+                    record = score
+
+                total_score += score
+                mean_score = total_score / (e+1)
+                plot_scores.append(score)
+                plot_mean_scores.append(mean_score)
+                last_20_scores += score
                 break
 
         logger.log_episode()
 
         if e % 20 == 0:
-            logger.record(episode=e, epsilon=snake.exploration_rate, step=snake.curr_step)
+            #logger.record(episode=e, epsilon=snake.exploration_rate, step=snake.curr_step)
+                # train long memory, plot result
+            last_20_mean_scores.append(last_20_scores/20)
+            plot(plot_scores, plot_mean_scores, last_20_mean_scores)
+            last_20_scores = 0
+    
+    print("Best score: "+str(record))

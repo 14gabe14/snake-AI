@@ -3,38 +3,28 @@ import random
 import numpy as np
 from collections import deque
 from snake import SnakeGame, Direction, Point
-from model import Linear_QNet, Conv_QNet, ConvQTrainer, QTrainer
+from model import Linear_DQN, Trainer
 from helper import plot
 
 MAX_MEMORY = 100_000
-BATCH_SIZE = 1000
-LR = 0.001
+BATCH_SIZE = 512
+LR = 0.0005
 
 class Agent:
-    def __init__(self, network="linear"):
+    def __init__(self):
         self.curr_step = 0
         self.epsilon = 0 # randomness
         self.gamma = 0.9 # discount rate
         self.memory = deque(maxlen=MAX_MEMORY) # popleft()
-        self.network = network
         self.exploration_rate = 1
-        self.exploration_rate_decay = 0.99995
-        self.exploration_rate_min = 0.05
-        """
-        if network == "convolutional":
-            self.model = Conv_QNet(24, 24, 3)
-            self.trainer = ConvQTrainer(self.model, lr=LR, gamma=self.gamma)
-        else:
-        """
-        self.model = Linear_QNet(11, 256, 3)
-        self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
+        self.exploration_rate_decay = 0.99975
+        self.exploration_rate_min = 0.01
+
+        self.model = Linear_DQN(11, 256, 3)
+        self.trainer = Trainer(self.model, lr=LR, gamma=self.gamma)
 
 
     def get_state(self, game):
-        """if self.network == "convolutional":
-            return(game.getStack()/255 - 0.5)/0.5
-            
-        else:"""
         head = game.snake[0]
         point_l = Point(head.x - 20, head.y)
         point_r = Point(head.x + 20, head.y)
@@ -117,16 +107,18 @@ class Agent:
 
         return final_move
 
-def train(mode = "linear"):
+def train():
     plot_scores = []
     plot_mean_scores = []
+    last_20_mean_scores = []
+    last_20_scores = 0
     total_score = 0
     record = 0
-    agent = Agent(mode)
+    agent = Agent()
     game = SnakeGame()
-    n_iterations = 300
+    n_games = 5000
     i = 1
-    while i < n_iterations:
+    while i < n_games:
         # get old state
         
         state_old = agent.get_state(game)
@@ -146,7 +138,6 @@ def train(mode = "linear"):
 
         if done:
             # train long memory, plot result
-            print(agent.exploration_rate)
             i += 1
             game.reset()
             agent.train_long_memory()
@@ -155,12 +146,18 @@ def train(mode = "linear"):
                 record = score
                 agent.model.save()
 
-            print('Game', i, 'Score', score, 'Record:', record)
-
             plot_scores.append(score)
             total_score += score
             mean_score = total_score / i
             plot_mean_scores.append(mean_score)
-            plot(plot_scores, plot_mean_scores)
+            last_20_scores += score
 
+            if i % 20 == 0:
+                last_20_mean_scores.append(last_20_scores/20)
+                print('Game', i, 'Score', score, 'Record:', record)
+                plot(plot_scores, plot_mean_scores, last_20_mean_scores)
+                last_20_scores = 0
+
+
+    print("Best score: "+str(record))
 
