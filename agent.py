@@ -12,6 +12,7 @@ LR = 0.0005
 
 class Agent:
     def __init__(self):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.curr_step = 0
         self.epsilon = 0 # randomness
         self.gamma = 0.9 # discount rate
@@ -20,7 +21,7 @@ class Agent:
         self.exploration_rate_decay = 0.99975
         self.exploration_rate_min = 0.01
 
-        self.model = Linear_DQN(11, 256, 3)
+        self.model = Linear_DQN(11, 256, 3).to(self.device)
         self.trainer = Trainer(self.model, lr=LR, gamma=self.gamma)
 
 
@@ -83,8 +84,8 @@ class Agent:
 
         states, actions, rewards, next_states, dones = zip(*mini_sample)
         self.trainer.train_step(states, actions, rewards, next_states, dones)
-        #for state, action, reward, nexrt_state, done in mini_sample:
-        #    self.trainer.train_step(state, action, reward, next_state, done)
+        for state, action, reward, next_state, done in mini_sample:
+            self.trainer.train_step(state, action, reward, next_state, done)
 
     def train_short_memory(self, state, action, reward, next_state, done):
         self.trainer.train_step(state, action, reward, next_state, done)
@@ -96,7 +97,7 @@ class Agent:
             move = random.randint(0, 2)
             final_move[move] = 1
         else:
-            state0 = torch.tensor(state, dtype=torch.float)
+            state0 = torch.tensor(state, dtype=torch.float).to(self.device)
             prediction = self.model(state0)
             move = torch.argmax(prediction).item()
             final_move[move] = 1
@@ -107,7 +108,7 @@ class Agent:
 
         return final_move
 
-def train():
+def train(n_games = 1000):
     plot_scores = []
     plot_mean_scores = []
     last_20_mean_scores = []
@@ -116,7 +117,6 @@ def train():
     record = 0
     agent = Agent()
     game = SnakeGame()
-    n_games = 5000
     i = 1
     while i < n_games:
         # get old state
@@ -154,8 +154,8 @@ def train():
 
             if i % 20 == 0:
                 last_20_mean_scores.append(last_20_scores/20)
-                print('Game', i, 'Score', score, 'Record:', record)
                 plot(plot_scores, plot_mean_scores, last_20_mean_scores)
+                print('Game:', i, 'Score:', score, 'Record:', record)
                 last_20_scores = 0
 
 

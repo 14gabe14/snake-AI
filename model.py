@@ -3,12 +3,14 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import os, copy
+import numpy as np
 
 class Linear_DQN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super().__init__()
         self.linear1 = nn.Linear(input_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, output_size)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def forward(self, x):
         x = F.relu(self.linear1(x))
@@ -33,10 +35,10 @@ class Trainer:
         self.criterion = nn.MSELoss()
 
     def train_step(self, state, action, reward, next_state, done):
-        state = torch.tensor(state, dtype=torch.float)
-        next_state = torch.tensor(next_state, dtype=torch.float)
-        action = torch.tensor(action, dtype=torch.long)
-        reward = torch.tensor(reward, dtype=torch.float)
+        state = torch.tensor(np.array(state), dtype=torch.float).to(self.model.device)
+        next_state = torch.tensor(np.array(next_state), dtype=torch.float).to(self.model.device)
+        action = torch.tensor(np.array(action), dtype=torch.long).to(self.model.device)
+        reward = torch.tensor(np.array(reward), dtype=torch.float).to(self.model.device)
         # (n, x)
         if len(state.shape) == 1:
             # (1, x)
