@@ -4,7 +4,7 @@ import numpy as np
 from collections import deque
 from snake import SnakeGame, Direction, Point
 from model import Linear_DQN, Trainer
-from helper import plot
+from helper import plot, plot_loss
 
 MAX_MEMORY = 100_000
 BATCH_SIZE = 512
@@ -155,6 +155,7 @@ def train(n_games = 1000):
             if i % 20 == 0:
                 last_20_mean_scores.append(last_20_scores/20)
                 plot(plot_scores, plot_mean_scores, last_20_mean_scores)
+                plot_loss(agent.trainer.losses)
                 print('Game:', i, 'Score:', score, 'Record:', record)
                 last_20_scores = 0
 
