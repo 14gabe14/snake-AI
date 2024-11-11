@@ -68,3 +68,47 @@ class Trainer:
 
         self.optimizer.step()
 
+class DoubleDQNTrainer:
+    def __init__(self, model, lr, gamma):
+        self.lr = lr
+        self.gamma = gamma
+        self.model = model
+        self.target_model = copy.deepcopy(model)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        self.criterion = nn.MSELoss()
+        self.update_steps = 0
+        self.update_target_every = 1000  # Update target network every 1000 steps
+        self.losses = []
+
+    def train_step(self, state, action, reward, next_state, done):
+        state = torch.tensor(np.array(state), dtype=torch.float).to(self.model.device)
+        next_state = torch.tensor(np.array(next_state), dtype=torch.float).to(self.model.device)
+        action = torch.tensor(np.array(action), dtype=torch.long).to(self.model.device)
+        reward = torch.tensor(np.array(reward), dtype=torch.float).to(self.model.device)
+
+        if len(state.shape) == 1:
+            state = torch.unsqueeze(state, 0)
+            next_state = torch.unsqueeze(next_state, 0)
+            action = torch.unsqueeze(action, 0)
+            reward = torch.unsqueeze(reward, 0)
+            done = (done, )
+
+        pred = self.model(state)
+        target = pred.clone()
+        with torch.no_grad():
+            next_pred = self.target_model(next_state)
+        for idx in range(len(done)):
+            Q_new = reward[idx]
+            if not done[idx]:
+                Q_new = reward[idx] + self.gamma * torch.max(next_pred[idx])
+            target[idx][torch.argmax(action[idx]).item()] = Q_new
+
+        self.optimizer.zero_grad()
+        loss = self.criterion(target, pred)
+        loss.backward()
+        self.optimizer.step()
+        self.losses.append(loss.item())
+
+        self.update_steps += 1
+        if self.update_steps % self.update_target_every == 0:
+            self.target_model.load_state_dict(self.model.state_dict())

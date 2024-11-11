@@ -3,7 +3,7 @@ import random
 import numpy as np
 from collections import deque
 from snake import SnakeGame, Direction, Point
-from model import Linear_DQN, Trainer
+from model import Linear_DQN, Trainer, DoubleDQNTrainer
 from helper import plot, plot_loss
 
 MAX_MEMORY = 100_000
@@ -11,7 +11,7 @@ BATCH_SIZE = 512
 LR = 0.0005
 
 class Agent:
-    def __init__(self):
+    def __init__(self, double_dqn = False):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.curr_step = 0
         self.epsilon = 0 # randomness
@@ -21,8 +21,13 @@ class Agent:
         self.exploration_rate_decay = 0.99975
         self.exploration_rate_min = 0.01
 
+        self.double_dqn = double_dqn
+
         self.model = Linear_DQN(11, 256, 3).to(self.device)
-        self.trainer = Trainer(self.model, lr=LR, gamma=self.gamma)
+        if double_dqn:
+            self.trainer = DoubleDQNTrainer(self.model, lr=LR, gamma=self.gamma)
+        else:
+            self.trainer = Trainer(self.model, lr=LR, gamma=self.gamma)
 
 
     def get_state(self, game):
@@ -108,14 +113,14 @@ class Agent:
 
         return final_move
 
-def train(n_games = 1000):
+def train(n_games = 1000, double_dqn = False):
     plot_scores = []
     plot_mean_scores = []
     last_20_mean_scores = []
     last_20_scores = 0
     total_score = 0
     record = 0
-    agent = Agent()
+    agent = Agent(double_dqn = double_dqn)
     game = SnakeGame()
     i = 1
     while i < n_games:
