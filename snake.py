@@ -42,7 +42,7 @@ class SnakeGame:
         # init display
         self.display = pygame.display.set_mode((self.w, self.h))
         pygame.display.set_caption('Snake Game')
-        self.clock = pygame.time.Clock()
+        # self.clock = pygame.time.Clock()
 
         self.reset()
 
@@ -62,25 +62,29 @@ class SnakeGame:
         self.frame_iteration = 0
         self.over = False
         self.flag = 0
-        self.dif = self.difference()
         self.action = [0, 0, 0]
         self.frameStack = np.zeros(shape = (4, int(self.h/BLOCKSIZE)+2, int(self.w/BLOCKSIZE)+2), dtype=np.uint8)
         return self.toTensor(self.frameStack)
        
 
     def difference(self):
-        dx = abs(self.head.x - self.food.x)/BLOCKSIZE/16
-        dy = abs(self.head.y - self.food.y)/BLOCKSIZE/16
+        dx = abs(self.head.x - self.food.x)/BLOCKSIZE
+        dy = abs(self.head.y - self.food.y)/BLOCKSIZE
 
-        return (dx+dy)/2
+        return (dx+dy)
 
     def place_food(self):
         x = random.randint(0, (self.w-BLOCKSIZE)//BLOCKSIZE)*BLOCKSIZE
         y = random.randint(0, (self.h-BLOCKSIZE)//BLOCKSIZE)*BLOCKSIZE
 
         self.food = Point(x, y)
+
+        self.incentive = self.difference()
+
         if self.food in self.snake:
             self.place_food()
+
+        
 
 
     def play_step(self, action:list):
@@ -94,6 +98,8 @@ class SnakeGame:
         #MOVEMENT FROM AI-------------
         #update snake's position according to action
 
+        prev_distance = self.difference()
+
         self._move(action)
         self.snake.insert(0, self.head)
         
@@ -104,33 +110,26 @@ class SnakeGame:
             self.reward = -10
             return self.reward, self.over, self.score
         
-        #if self.difference() < 2:
-            #self.reward = 1
+        new_distance = self.difference()
+        
 
         #Place new food
         if self.head == self.food:
             self.score += 1
-            self.reward = 10
+            self.reward = 10 * self.score
             self.place_food()
             self.frame_iteration = 0
         else:
             self.snake.pop()
-            #reward = self.dif - self.difference()
-            #self.dif = self.difference()
-            #if self.frame_iteration > 50*len(self.snake):
-                #self.reward -= 1
-
-        #if np.array_equal(self.action, action) and not np.array_equal(action, [1, 0, 0]):
-            #self.flag += 1
-
-        #if self.flag > 4:
-            #self.reward -= 5
+            if new_distance < prev_distance and self.incentive > 0:
+                self.reward = 10/self.incentive
+                self.incentive = max(0, self.incentive - 1)
 
         self.action = action
             
         #Update ui and clock
-        self.update_ui()
-        self.clock.tick(SPEED)
+        # self.update_ui()
+        # self.clock.tick(SPEED)
         self.updateStack()
         # 6. return game over and score
         #return torch.tensor([game_over, self.score], device = DEVICE)
@@ -284,8 +283,52 @@ class SnakeGame:
         observation = transforms(observation).squeeze(0)
         
         return observation
+    
+    def get_state(self):
+        head = self.snake[0]
+        point_l = Point(head.x - BLOCKSIZE, head.y)
+        point_r = Point(head.x + BLOCKSIZE, head.y)
+        point_u = Point(head.x, head.y - BLOCKSIZE)
+        point_d = Point(head.x, head.y + BLOCKSIZE)
+        
+        dir_l = self.direction == Direction.LEFT
+        dir_r = self.direction == Direction.RIGHT
+        dir_u = self.direction == Direction.UP
+        dir_d = self.direction == Direction.DOWN
 
+        state = [
+            # Danger straight
+            (dir_r and self.is_collision(point_r)) or 
+            (dir_l and self.is_collision(point_l)) or 
+            (dir_u and self.is_collision(point_u)) or 
+            (dir_d and self.is_collision(point_d)),
 
+            # Danger right
+            (dir_u and self.is_collision(point_r)) or 
+            (dir_d and self.is_collision(point_l)) or 
+            (dir_l and self.is_collision(point_u)) or 
+            (dir_r and self.is_collision(point_d)),
+
+            # Danger left
+            (dir_d and self.is_collision(point_r)) or 
+            (dir_u and self.is_collision(point_l)) or 
+            (dir_r and self.is_collision(point_u)) or 
+            (dir_l and self.is_collision(point_d)),
+            
+            # Move direction
+            dir_l,
+            dir_r,
+            dir_u,
+            dir_d,
+            
+            # Food location 
+            self.food.x < self.head.x,  # food left
+            self.food.x > self.head.x,  # food right
+            self.food.y < self.head.y,  # food up
+            self.food.y > self.head.y  # food down
+        ]
+
+        return np.array(state, dtype=int)
 
 if __name__ == '__main__':
     game = SnakeGame()
@@ -293,16 +336,6 @@ if __name__ == '__main__':
 
     game.reset()
 
-    
-
-    #_, reward, game_over, score = game.play_step(2)
-    _, reward, game_over, score = game.play(0)
-    #_, reward, game_over, score = game.play_step(2)
-    _, reward, game_over, score = game.play(0)
-    #_, reward, game_over, score = game.play_step(2)
-    _, reward, game_over, score = game.play(0)
-    #_, reward, game_over, score = game.play_step(2)
-    #_, reward, game_over, score = game.play_step(0)
     fs, reward, game_over, score = game.play(0)
     np.set_printoptions(threshold=np.inf)
     torch.set_printoptions(threshold=10_000)
